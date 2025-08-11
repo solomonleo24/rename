@@ -1,0 +1,9 @@
+bs4
+ddgs
+newspaper3k
+requests
+lxml_html_clean
+sentence_transformers
+numpy
+scipy
+scikit-learn
