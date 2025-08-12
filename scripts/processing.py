@@ -1,28 +1,53 @@
-from scripts.scraping import get_urls, extract_clean_article_texts, get_single_embedding_per_name
+from sentence_transformers import SentenceTransformer
+from transformers import AutoTokenizer, AutoModelForSequenceClassification
+import numpy as np
+import torch
 
-# Processing pipeline to handle multiple queries and return embeddings
-def pipeline(query, max_results=5, delay=1, remove_numbers=False, model_name='all-MiniLM-L6-v2'):
-    # Read txt file of queries and run the pipeline for each query
-    with open(query, 'r') as file:
-        queries = file.readlines()
+# Load sentiment model & tokenizer once (not inside the loop)
+sentiment_model_name = "cardiffnlp/twitter-roberta-base-sentiment-latest"
+sentiment_tokenizer = AutoTokenizer.from_pretrained(sentiment_model_name)
+sentiment_model = AutoModelForSequenceClassification.from_pretrained(sentiment_model_name)
 
-    results = {}
-    for q in queries:
-        q = q.strip()
-        if q:  # Skip empty lines
-            embeddings = processing_pipeline_helper(q, max_results=max_results, delay=delay, remove_numbers=remove_numbers, model_name=model_name)
-            results[q] = embeddings
+# Load semantic embedding model once
+semantic_model = SentenceTransformer("all-MiniLM-L6-v2")
 
-        print(f"Processed {q}")
+def get_embeddings(query):
+    """
+    query: dict where keys are names and values are lists of strings
+    Returns a dict: name -> {semantic: np.array, sentiment: np.array}
+    """
+    trace = {}
+    for q, texts in query.items():
+        if texts:
+            semantic = get_single_embedding_semantic(texts)
+            sentiment = get_single_embedding_sentiment(texts)
+            trace[q] = {
+                'semantic': semantic,
+                'sentiment': sentiment
+            }
 
-    return results
+        print(f"Processed {q} with {len(texts)} texts")
+    return trace
 
-# Helper function to run the processing pipeline for a single query
-def processing_pipeline_helper(query, max_results=5, delay=1, remove_numbers=False, model_name='all-MiniLM-L6-v2'):
+def get_single_embedding_semantic(texts):
+    combined_text = " ".join(texts)
+    emb = semantic_model.encode(combined_text)
+    return np.array(emb)
 
-    urls = get_urls(query, max_results=max_results, delay=delay)
-    clean_texts = extract_clean_article_texts(urls, remove_numbers=remove_numbers)
-    
-    embeddings = get_single_embedding_per_name(clean_texts, model_name=model_name)
-    
-    return embeddings
+def get_single_embedding_sentiment(texts):
+    combined_text = " ".join(texts)
+
+    # Tokenize with truncation so it fits model's 512-token limit
+    inputs = sentiment_tokenizer(
+        combined_text,
+        return_tensors="pt",
+        truncation=True,
+        max_length=512,
+        padding="max_length"
+    )
+
+    with torch.no_grad():
+        outputs = sentiment_model(**inputs)
+        scores = torch.softmax(outputs.logits, dim=1).cpu().numpy()[0]
+
+    return np.array(scores)  # [neg, neu, pos] or similar depending on model

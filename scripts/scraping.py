@@ -5,13 +5,14 @@ from newspaper import Article
 import re
 from time import sleep
 from sentence_transformers import SentenceTransformer
+from transformers import pipeline
 
 def get_urls(query, max_results=5, delay=1):
     urls = []
     with DDGS() as ddgs:
         results = ddgs.text(f'{query}+name', max_results=max_results)
         for r in results:
-            if r.get("href") and 'sully' in r["href"].lower():
+            if r.get("href") and query.lower() in r["href"].lower():
                 urls.append(r["href"])
 
             sleep(delay)
@@ -42,12 +43,28 @@ def extract_clean_article_texts(url_list, remove_numbers=False):
     
     return clean_texts
 
-def get_single_embedding_per_name(texts, model_name='all-MiniLM-L6-v2'):
+# Processing pipeline to handle multiple queries and return embeddings
+def extract_texts(query, max_results=5, delay=1, remove_numbers=False, model_name='all-MiniLM-L6-v2'):
+    # Read txt file of queries and run the pipeline for each query
+    with open(query, 'r') as file:
+        queries = file.readlines()
 
-    model = SentenceTransformer(model_name)
+    trace = {}
 
-    combined_text = " ".join(texts)  # concatenate all texts for that name
-    # Optionally truncate combined_text here if too long
-    emb = model.encode(combined_text)
+    for q in queries:
+        q = q.strip()
+        if q:  # Skip empty lines
+            texts = processing_pipeline_helper(q, max_results=max_results, delay=delay, remove_numbers=remove_numbers, model_name=model_name)
+            trace[q] = texts
 
-    return emb
+        print(f"Processed {q}")
+
+    return trace
+
+# Helper function to run the processing pipeline for a single query
+def processing_pipeline_helper(query, max_results=5, delay=1, remove_numbers=False, model_name='all-MiniLM-L6-v2'):
+
+    urls = get_urls(query, max_results=max_results, delay=delay)
+    clean_texts = extract_clean_article_texts(urls, remove_numbers=remove_numbers)
+    
+    return clean_texts

@@ -7,3 +7,8 @@ sentence_transformers
 numpy
 scipy
 scikit-learn
+transformers
+pandas
+networkx
+plotly
+nbformat
